@@ -8,7 +8,10 @@ from torchvision import transforms
 from torchvision import models
 
 from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
 from torch.utils.data import random_split
+from model import build_binary_model
+
 
 
 device = torch.device(
@@ -18,7 +21,7 @@ device = torch.device(
 print(f"Using device: {device}")
 
 
-DATA_DIR = "./glass_anomaly"
+DATA_DIR = "./glass_anomaly_detection_dataset"
 
 train_transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -44,25 +47,44 @@ val_transform = transforms.Compose([
     )
 ])
 
-dataset = datasets.ImageFolder(
+full_dataset = datasets.ImageFolder(
     root=DATA_DIR,
-    transform=train_transform
+    transform=None
 )
 
-print("Classes:", dataset.classes)
-print("Class Mapping:", dataset.class_to_idx)
+print("Classes:", full_dataset.classes)
+print("Class Mapping:", full_dataset.class_to_idx)
 
 
-total = len(dataset)
+total = len(full_dataset)
 
 train_size = int(0.70 * total)
 val_size = int(0.15 * total)
 test_size = total - train_size - val_size
 
 train_set, val_set, test_set = random_split(
-    dataset,
+    full_dataset,
     [train_size, val_size, test_size]
 )
+
+
+class TransformSubset(Dataset):
+    def __init__(self, subset, transform):
+        self.subset = subset
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.subset)
+
+    def __getitem__(self, idx):
+        img, label = self.subset[idx]
+        return self.transform(img), label
+
+
+train_dataset = TransformSubset(train_set, train_transform)
+val_dataset = TransformSubset(val_set, val_transform)
+
+test_dataset = TransformSubset(test_set, val_transform)
 
 print(
     f"Train: {len(train_set)} | "
@@ -71,42 +93,25 @@ print(
 )
 
 train_loader = DataLoader(
-    train_set,
+    train_dataset,
     batch_size=16,
     shuffle=True,
     num_workers=0
 )
 
 val_loader = DataLoader(
-    val_set,
+    val_dataset,
     batch_size=16,
     shuffle=False,
     num_workers=0
 )
 
 
-model = models.resnet50(
-    weights=models.ResNet50_Weights.IMAGENET1K_V1
-)
+model = build_binary_model()
 
-
-
-
-for param in model.parameters():
-    param.requires_grad = False
-
+# Fine-tune only layer4 for anomaly detection
 for param in model.layer4.parameters():
     param.requires_grad = True
-
-
-in_features = model.fc.in_features
-
-model.fc = nn.Sequential(
-    nn.Linear(in_features, 256),
-    nn.ReLU(),
-    nn.Dropout(0.5),
-    nn.Linear(256, 2)
-)
 
 model = model.to(device)
 
@@ -118,7 +123,7 @@ optimizer = optim.Adam(
     lr=0.0001
 )
 
-EPOCHS = 15
+EPOCHS = 50
 
 best_val_acc = 0.0
 
@@ -203,7 +208,7 @@ for epoch in range(EPOCHS):
 
         torch.save(
             model.state_dict(),
-            "saved_models/glass_anomaly_model.pth"
+            "saved_models/glass_anomaly_detection_model.pth"
         )
 
         print(

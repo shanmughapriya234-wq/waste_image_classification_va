@@ -1,0 +1,185 @@
+import argparse
+import os
+
+import torch
+import torch.nn as nn
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader, random_split, Dataset
+
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    accuracy_score
+)
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from model import build_model, build_binary_model
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using:", device)
+
+
+class TransformSubset(Dataset):
+    def __init__(self, subset, transform):
+        self.subset = subset
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.subset)
+
+    def __getitem__(self, idx):
+        img, label = self.subset[idx]
+        if self.transform is not None:
+            img = self.transform(img)
+        return img, label
+
+
+class BinarySubsetDataset(Dataset):
+    def __init__(self, dataset, label_map, transform=None):
+        self.dataset = dataset
+        self.transform = transform
+        self.label_map = label_map
+        self.samples = []
+
+        for path, label in dataset.samples:
+            if label in label_map:
+                self.samples.append((path, label_map[label]))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        path, label = self.samples[idx]
+        image = self.dataset.loader(path)
+        if self.transform is not None:
+            image = self.transform(image)
+        return image, label
+
+
+def build_eval_transform():
+    return transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
+    ])
+
+
+def make_test_loader(mode, transform):
+    if mode == "waste_classification":
+        full_dataset = datasets.ImageFolder(root="./data", transform=None)
+        total = len(full_dataset)
+        train_size = int(0.70 * total)
+        val_size = int(0.15 * total)
+        test_size = total - train_size - val_size
+        _, _, test_set = random_split(full_dataset, [train_size, val_size, test_size])
+        test_dataset = TransformSubset(test_set, transform)
+        class_names = full_dataset.classes
+        model = build_model(9)
+        state_path = "saved_models/best_model.pth"
+        return test_dataset, class_names, model, state_path
+
+    if mode == "glass_plastic":
+        full_dataset = datasets.ImageFolder(root="./data", transform=None)
+        glass_idx = full_dataset.class_to_idx["Glass"]
+        plastic_idx = full_dataset.class_to_idx["Plastic"]
+        label_map = {glass_idx: 0, plastic_idx: 1}
+        binary_dataset = BinarySubsetDataset(full_dataset, label_map, transform=None)
+        total = len(binary_dataset)
+        train_size = int(0.70 * total)
+        val_size = int(0.15 * total)
+        test_size = total - train_size - val_size
+        _, _, test_set = random_split(binary_dataset, [train_size, val_size, test_size])
+        test_dataset = TransformSubset(test_set, transform)
+        class_names = ["Glass", "Plastic"]
+        model = build_binary_model()
+        state_path = "saved_models/glass_plastic_model.pth"
+        return test_dataset, class_names, model, state_path
+
+    if mode == "glass_anomaly":
+        full_dataset = datasets.ImageFolder(root="./glass_anomaly", transform=None)
+        class_names = ["Broken", "Normal"]
+        binary_dataset = full_dataset
+        total = len(binary_dataset)
+        train_size = int(0.70 * total)
+        val_size = int(0.15 * total)
+        test_size = total - train_size - val_size
+        _, _, test_set = random_split(binary_dataset, [train_size, val_size, test_size])
+        test_dataset = TransformSubset(test_set, transform)
+        model = build_binary_model()
+        state_path = "saved_models/glass_anomaly_model.pth"
+        return test_dataset, class_names, model, state_path
+
+    raise ValueError("Unsupported mode")
+
+
+def evaluate(mode):
+    transform = build_eval_transform()
+    test_dataset, class_names, model, state_path = make_test_loader(mode, transform)
+
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+    if not os.path.exists(state_path):
+        raise FileNotFoundError(
+            f"Model checkpoint not found at {state_path}. Train the model first with 'python src/train_classification.py' or the corresponding binary training script."
+        )
+
+    model.load_state_dict(torch.load(state_path, map_location=device))
+    model.to(device)
+    model.eval()
+
+    all_preds = []
+    all_labels = []
+
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images = images.to(device)
+            outputs = model(images)
+            preds = outputs.argmax(dim=1)
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
+    acc = accuracy_score(all_labels, all_preds)
+    print(f"\n[{mode}] Test Accuracy: {acc:.4f}")
+    print("\nClassification Report:\n")
+    print(classification_report(all_labels, all_preds, target_names=class_names))
+
+    cm = confusion_matrix(all_labels, all_preds)
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    output_dir = os.path.join(repo_root, "confusion_matrix_results")
+    os.makedirs(output_dir, exist_ok=True)
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        xticklabels=class_names,
+        yticklabels=class_names,
+        cmap="Blues"
+    )
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title(f"{mode.replace('_', ' ').title()} Confusion Matrix")
+    plt.tight_layout()
+    output_path = os.path.join(output_dir, f"{mode}_confusion_matrix.png")
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
+    print(f"Saved confusion matrix to {output_path}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=["waste_classification", "glass_plastic", "glass_anomaly"],
+        default="waste_classification"
+    )
+    args = parser.parse_args()
+    evaluate(args.mode)

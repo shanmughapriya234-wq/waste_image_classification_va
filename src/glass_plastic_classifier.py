@@ -34,10 +34,19 @@ train_transform = transforms.Compose([
     )
 ])
 
+val_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+])
+
 
 full_dataset = datasets.ImageFolder(
-    root="./data",
-    transform=train_transform
+    root="./dataset",
+    transform=None
 )
 
 print("All Classes:", full_dataset.classes)
@@ -48,9 +57,10 @@ plastic_idx = full_dataset.class_to_idx["Plastic"]
 
 class GlassPlasticDataset(Dataset):
 
-    def __init__(self, dataset):
+    def __init__(self, dataset, transform=None):
 
         self.dataset = dataset
+        self.transform = transform
 
         self.samples = []
 
@@ -71,11 +81,13 @@ class GlassPlasticDataset(Dataset):
 
         image = self.dataset.loader(path)
 
-        image = self.dataset.transform(image)
+        if self.transform is not None:
+            image = self.transform(image)
 
         return image, label
 
-dataset = GlassPlasticDataset(full_dataset)
+
+dataset = GlassPlasticDataset(full_dataset, transform=None)
 
 print("Glass + Plastic Images:", len(dataset))
 
@@ -97,37 +109,44 @@ print(
     f"Test: {len(test_set)}"
 )
 
+class TransformSubset(Dataset):
+    def __init__(self, subset, transform):
+        self.subset = subset
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.subset)
+
+    def __getitem__(self, idx):
+        img, label = self.subset[idx]
+        if self.transform is not None:
+            img = self.transform(img)
+        return img, label
+
+
+train_dataset = TransformSubset(train_set, transform=train_transform)
+val_dataset = TransformSubset(val_set, transform=val_transform)
+
+test_dataset = TransformSubset(test_set, transform=val_transform)
+
 train_loader = DataLoader(
-    train_set,
+    train_dataset,
     batch_size=16,
     shuffle=True,
     num_workers=0
 )
 
 val_loader = DataLoader(
-    val_set,
+    val_dataset,
     batch_size=16,
     shuffle=False,
     num_workers=0
 )
 
 
-model = models.resnet50(
-    weights=models.ResNet50_Weights.IMAGENET1K_V1
-)
+from model import build_binary_model
 
-for param in model.parameters():
-    param.requires_grad = False
-
-in_features = model.fc.in_features
-
-model.fc = nn.Sequential(
-    nn.Linear(in_features, 256),
-    nn.ReLU(),
-    nn.Dropout(0.5),
-    nn.Linear(256, 2)
-)
-
+model = build_binary_model()
 model = model.to(device)
 
 
@@ -139,7 +158,7 @@ optimizer = optim.Adam(
 )
 
 
-EPOCHS = 15
+EPOCHS = 50
 
 best_val_acc = 0.0
 

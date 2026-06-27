@@ -5,9 +5,9 @@ from PIL import Image
 
 from lime import lime_image
 
-from skimage.segmentation import mark_boundaries
+from skimage.segmentation import quickshift
 
-
+explainer = lime_image.LimeImageExplainer()
 def create_predict_function(model, transform, device):
     """
     Returns a prediction function compatible with LIME.
@@ -48,22 +48,27 @@ def create_predict_function(model, transform, device):
 def generate_lime(
         image_pil,
         predict_function,
-        num_samples=1000,
-        num_features=15
+        num_samples=100,
+        num_features=5
 ):
 
-    image_np = np.array(
-        image_pil.convert("RGB")
-    )
+    image_pil = image_pil.resize((224, 224))
+    image_np = np.array(image_pil)
 
-    explainer = lime_image.LimeImageExplainer()
+    #explainer = lime_image.LimeImageExplainer()
 
     explanation = explainer.explain_instance(
         image_np,
         predict_function,
         top_labels=1,
         hide_color=0,
-        num_samples=num_samples
+        num_samples=num_samples,
+        segmentation_fn=lambda x: quickshift(
+            x,
+            kernel_size=4,
+            max_dist=200,
+            ratio=0.2
+        )
     )
 
     temp, mask = explanation.get_image_and_mask(
@@ -73,7 +78,11 @@ def generate_lime(
         hide_rest=False
     )
 
-    return mark_boundaries(
-        temp / 255.0,
-        mask
+    lime_img = temp.copy()
+
+    lime_img[mask == 1] = (
+        0.6 * lime_img[mask == 1]
+        + 0.4 * np.array([0, 255, 0])
     )
+
+    return lime_img.astype(np.uint8)

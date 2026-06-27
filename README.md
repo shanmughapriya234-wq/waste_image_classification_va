@@ -38,6 +38,9 @@ pip -V
 ## Run the Project
 Run the scripts in the following order:
 
+
+source /Users/shanmughapriya/Desktop/Project/waste-image-classification/venv/bin/activate
+
 ```bash
 python src/preprocess.py
 python src/model.py
@@ -51,7 +54,7 @@ python src/glass_anomaly_classifier.py
 python src/evaluation_matrix.py --mode waste_classification
 python src/evaluation_matrix.py --mode glass_plastic
 python src/evaluation_matrix.py --mode glass_anomaly
-python src/predict.py
+
 
 streamlit run src/streamlite_ui.py
 ```

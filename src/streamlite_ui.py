@@ -6,12 +6,21 @@ import warnings
 
 from torchvision import transforms
 from PIL import Image
-from model import build_model, build_binary_model
-from gradcam_explanation import generate_gradcam
-from lime_explaination import (
-    create_predict_function,
-    generate_lime
-)
+
+try:
+    from model import build_model, build_binary_model
+    from gradcam_explanation import generate_gradcam
+    from lime_explaination import (
+        create_predict_function,
+        generate_lime
+    )
+except ModuleNotFoundError:
+    from src.model import build_model, build_binary_model
+    from src.gradcam_explanation import generate_gradcam
+    from src.lime_explaination import (
+        create_predict_function,
+        generate_lime
+    )
 
 warnings.filterwarnings('ignore')
 
@@ -56,7 +65,13 @@ GLASS_PLASTIC_CLASSES = [
     "Glass",
     "Plastic"
 ]
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -98,13 +113,13 @@ def load_main_model():
 
     model.load_state_dict(
         torch.load(
-            "saved_models/best_model.pth",
+            "saved_models_sindhu/classification_model.pth",
             map_location=device
         )
     )
 
     model.to(device)
-
+    model.eval() 
     return model
 
 @st.cache_resource
@@ -114,13 +129,13 @@ def load_glass_anomaly_model():
 
     model.load_state_dict(
         torch.load(
-            "saved_models/glass_anomaly_model.pth",
+            "saved_models_sindhu/glass_anomaly_detection_model.pth",
             map_location=device
         )
     )
 
     model.to(device)
-
+    model.eval() 
     return model
 
 @st.cache_resource
@@ -131,12 +146,13 @@ def load_glass_plastic_model():
 
     model.load_state_dict(
         torch.load(
-            "saved_models/glass_plastic_model.pth",
+            "saved_models_sindhu/glass_plastic_model.pth",
             map_location=device
         )
     )
 
     model.to(device)
+    model.eval()
     return model
 
 main_model = load_main_model()
@@ -188,7 +204,7 @@ if st.session_state.current_page == "main":
 
         with p1_col:
             st.markdown("<p style='font-size: 12px; font-weight: bold; margin: -10px 0 1px 0;'>Waste Classification</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size: 12px; color: #666; margin: 5px 0 10px 0;'>Predicted class: <span style='color: #0f8c3a; font-weight: bold;'>{WASTE_CLASSES[predicted_class_idx]}</span></p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size: 12px; color: #666; margin: 5px 0 10px 0;'>Predicted class: <span style='color: #0f8c3a; font-weight: bold;'>{WASTE_CLASSES[final_predicted_class_idx]}</span></p>", unsafe_allow_html=True)
             st.markdown(f"<p style='font-size: 10px; margin: 0 0 5px 0;'>Confidence: {confidence:.2f}%</p>", unsafe_allow_html=True)
 
             prob_data = {
@@ -235,9 +251,11 @@ if st.session_state.current_page == "main":
 
                 if gp_idx == 0:  # Glass confirmed
                     final_predicted_class_idx = 2
+                    
                     st.markdown("<div style='background-color: #d4edda; padding: 4px 8px; border-radius: 3px; border-left: 3px solid #28a745;'><p style='font-size: 9px; margin: 0; color: #155724;'><b>Confirmed: Glass</b></p></div>", unsafe_allow_html=True)
                 else:  # Actually Plastic
                     final_predicted_class_idx = 6
+                    
                     st.markdown("<div style='background-color: #fff3cd; padding: 4px 8px; border-radius: 3px; border-left: 3px solid #ffc107;'><p style='font-size: 9px; margin: 0; color: #856404;'><b>Might be: Plastic</b></p></div>", unsafe_allow_html=True)
 
                 class_name = "Glass" if gp_idx == 0 else "Plastic"
@@ -266,8 +284,11 @@ if st.session_state.current_page == "main":
 
                 if gp_idx == 0:  # Verification says Glass
                     final_predicted_class_idx = 2  # Glass index
+                    
                     st.markdown("<div style='background-color: #fff3cd; padding: 4px 8px; border-radius: 3px; border-left: 3px solid #ffc107;'><p style='font-size: 9px; margin: 0; color: #856404;'><b> Might be: Glass</b></p></div>", unsafe_allow_html=True)
                 else:  # Plastic confirmed
+                    final_predicted_class_idx = 6
+                    
                     st.markdown("<div style='background-color: #d4edda; padding: 4px 8px; border-radius: 3px; border-left: 3px solid #28a745;'><p style='font-size: 9px; margin: 0; color: #155724;'><b>Confirmed: Plastic</b></p></div>", unsafe_allow_html=True)
 
                 class_name = "Glass" if gp_idx == 0 else "Plastic"
@@ -346,7 +367,6 @@ if st.session_state.current_page == "main":
 
             with st.spinner("Generating Grad-CAM..."):
                 try:
-                    explain_model.eval()
                     gradcam_img = generate_gradcam(
                         explain_model,
                         image_pil,
@@ -374,7 +394,6 @@ if st.session_state.current_page == "main":
                         caption="LIME",
                         width=200
                     )
-                    #st.markdown(f"<p style='font-size: 10px; margin-top: 5px;'>Confidence: {lime_confidence:.2f}%</p>", unsafe_allow_html=True)
                 except Exception as e:
                     st.error(f"LIME Error: {str(e)}")
 

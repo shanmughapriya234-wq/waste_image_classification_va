@@ -18,7 +18,12 @@ import seaborn as sns
 from model import build_model, build_binary_model
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
 print("Using:", device)
 
 
@@ -81,7 +86,7 @@ def make_test_loader(mode, transform):
         test_dataset = TransformSubset(test_set, transform)
         class_names = full_dataset.classes
         model = build_model(9)
-        state_path = "saved_models/best_model.pth"
+        state_path = "saved_models/classification_model.pth"
         return test_dataset, class_names, model, state_path
 
     if mode == "glass_plastic":
@@ -112,7 +117,7 @@ def make_test_loader(mode, transform):
         _, _, test_set = random_split(binary_dataset, [train_size, val_size, test_size])
         test_dataset = TransformSubset(test_set, transform)
         model = build_binary_model()
-        state_path = "saved_models/glass_anomaly_model.pth"
+        state_path = "saved_models/glass_anomaly_detection_model.pth"
         return test_dataset, class_names, model, state_path
 
     raise ValueError("Unsupported mode")

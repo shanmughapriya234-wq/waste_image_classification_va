@@ -1,0 +1,8 @@
+              precision    recall  f1-score   support
+
+       Glass       0.91      0.90      0.90        79
+     Plastic       0.94      0.94      0.94       123
+
+    accuracy                           0.93       202
+   macro avg       0.92      0.92      0.92       202
+weighted avg       0.93      0.93      0.93       202

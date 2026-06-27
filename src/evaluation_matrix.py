@@ -77,20 +77,26 @@ def build_eval_transform():
 
 def make_test_loader(mode, transform):
     if mode == "waste_classification":
-        full_dataset = datasets.ImageFolder(root="./data", transform=None)
+        full_dataset = datasets.ImageFolder(root="./dataset", transform=None)
         total = len(full_dataset)
         train_size = int(0.70 * total)
         val_size = int(0.15 * total)
         test_size = total - train_size - val_size
-        _, _, test_set = random_split(full_dataset, [train_size, val_size, test_size])
+        generator = torch.Generator().manual_seed(42)
+
+        _, _, test_set = random_split(
+            full_dataset,
+            [train_size, val_size, test_size],
+            generator=generator
+        )
         test_dataset = TransformSubset(test_set, transform)
         class_names = full_dataset.classes
         model = build_model(9)
-        state_path = "saved_models/classification_model.pth"
+        state_path = os.path.join("classification_saved_results","classification_model.pth")
         return test_dataset, class_names, model, state_path
 
     if mode == "glass_plastic":
-        full_dataset = datasets.ImageFolder(root="./data", transform=None)
+        full_dataset = datasets.ImageFolder(root="./dataset", transform=None)
         glass_idx = full_dataset.class_to_idx["Glass"]
         plastic_idx = full_dataset.class_to_idx["Plastic"]
         label_map = {glass_idx: 0, plastic_idx: 1}
@@ -99,25 +105,36 @@ def make_test_loader(mode, transform):
         train_size = int(0.70 * total)
         val_size = int(0.15 * total)
         test_size = total - train_size - val_size
-        _, _, test_set = random_split(binary_dataset, [train_size, val_size, test_size])
+        generator = torch.Generator().manual_seed(42)
+        _, _, test_set = random_split(
+            binary_dataset,
+            [train_size, val_size, test_size],
+            generator=generator
+        )
         test_dataset = TransformSubset(test_set, transform)
         class_names = ["Glass", "Plastic"]
         model = build_binary_model()
-        state_path = "saved_models/glass_plastic_model.pth"
+        state_path = os.path.join("glass_plastic_saved_results", "glass_plastic_model.pth")
         return test_dataset, class_names, model, state_path
 
     if mode == "glass_anomaly":
-        full_dataset = datasets.ImageFolder(root="./glass_anomaly", transform=None)
+        full_dataset = datasets.ImageFolder(root="./glass_anomaly_detection_dataset", transform=None)
         class_names = ["Broken", "Normal"]
         binary_dataset = full_dataset
         total = len(binary_dataset)
         train_size = int(0.70 * total)
         val_size = int(0.15 * total)
         test_size = total - train_size - val_size
-        _, _, test_set = random_split(binary_dataset, [train_size, val_size, test_size])
+        generator = torch.Generator().manual_seed(42)
+
+        _, _, test_set = random_split(
+            binary_dataset,
+            [train_size, val_size, test_size],
+            generator=generator
+        )
         test_dataset = TransformSubset(test_set, transform)
         model = build_binary_model()
-        state_path = "saved_models/glass_anomaly_detection_model.pth"
+        state_path = os.path.join("glass_anomaly_saved_results", "glass_anomaly_model.pth")
         return test_dataset, class_names, model, state_path
 
     raise ValueError("Unsupported mode")
@@ -152,12 +169,31 @@ def evaluate(mode):
     acc = accuracy_score(all_labels, all_preds)
     print(f"\n[{mode}] Test Accuracy: {acc:.4f}")
     print("\nClassification Report:\n")
-    print(classification_report(all_labels, all_preds, target_names=class_names))
+    report = classification_report(
+            all_labels,
+            all_preds,
+            target_names=class_names
+        )
+
+    print(report)
 
     cm = confusion_matrix(all_labels, all_preds)
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    output_dir = os.path.join(repo_root, "confusion_matrix_results")
+    if mode == "waste_classification":
+        output_dir = "classification_saved_results"
+
+    elif mode == "glass_plastic":
+        output_dir = "glass_plastic_saved_results"
+
+    elif mode == "glass_anomaly":
+        output_dir = "glass_anomaly_saved_results"
+
     os.makedirs(output_dir, exist_ok=True)
+
+    with open(
+        os.path.join(output_dir, f"{mode}_classification_report.txt"),
+        "w"
+    ) as f:
+        f.write(report)
 
     plt.figure(figsize=(8, 6))
     sns.heatmap(

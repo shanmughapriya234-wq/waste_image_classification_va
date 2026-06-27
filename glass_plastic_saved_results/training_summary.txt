@@ -1,0 +1,9 @@
+Glass vs Plastic Binary Classification
+========================================
+Epochs: 50
+Batch Size: 16
+Learning Rate: 0.001
+Training Images: 938
+Validation Images: 201
+Test Images: 202
+Best Validation Accuracy: 0.9701

@@ -1,0 +1,9 @@
+Waste Classification (9 Classes)
+========================================
+Epochs: 50
+Batch Size: 32
+Learning Rate: 0.001
+Training Images: 3326
+Validation Images: 712
+Test Images: 714
+Best Validation Accuracy: 0.8104

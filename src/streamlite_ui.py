@@ -113,7 +113,7 @@ def load_main_model():
 
     model.load_state_dict(
         torch.load(
-            "saved_models_sindhu/classification_model.pth",
+            "saved_models/classification_model.pth",
             map_location=device
         )
     )
@@ -129,7 +129,7 @@ def load_glass_anomaly_model():
 
     model.load_state_dict(
         torch.load(
-            "saved_models_sindhu/glass_anomaly_detection_model.pth",
+            "saved_models/glass_anomaly_detection_model.pth",
             map_location=device
         )
     )
@@ -146,7 +146,7 @@ def load_glass_plastic_model():
 
     model.load_state_dict(
         torch.load(
-            "saved_models_sindhu/glass_plastic_model.pth",
+            "saved_models/glass_plastic_model.pth",
             map_location=device
         )
     )
